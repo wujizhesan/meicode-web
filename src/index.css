@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 6% 6%;
+    --foreground: 0 0% 96%;
+    --card: 240 5% 9%;
+    --card-foreground: 0 0% 96%;
+    --muted: 240 4% 14%;
+    --muted-foreground: 240 5% 62%;
+    --border: 240 4% 17%;
+    --input: 240 4% 17%;
+    --ring: 190 90% 55%;
+    --primary: 190 90% 55%;
+    --primary-foreground: 200 40% 8%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-white/10;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+}
+
+/* markdown 正文：prose 打底，这里只做微调 */
+.md-body {
+  @apply prose prose-invert max-w-none;
+  @apply prose-headings:font-semibold prose-headings:tracking-tight;
+  @apply prose-p:my-3 prose-p:leading-7;
+  @apply prose-pre:my-3 prose-pre:rounded-lg prose-pre:border prose-pre:border-border prose-pre:bg-[#0b0d12];
+  @apply prose-code:rounded prose-code:bg-white/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:text-[0.86em] prose-code:font-normal;
+  @apply prose-code:before:content-none prose-code:after:content-none;
+  @apply prose-table:my-4 prose-th:border prose-th:border-border prose-th:px-3 prose-th:py-2;
+  @apply prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2;
+  @apply prose-a:text-cyan-300;
+  @apply prose-blockquote:border-l-2 prose-blockquote:border-border prose-blockquote:not-italic;
+}
+
+.md-body pre code {
+  @apply bg-transparent p-0 text-[13px] leading-6;
+  font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
+}
+
+/* highlight.js 的主题 CSS 会给 .hljs 加 1em 内边距和独立底色，
+   和外面那层带标题栏的容器叠在一起就会缩进错位，这里清掉。 */
+.md-body pre code.hljs {
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+/* typography 默认给引用块自动加引号，中文语境下不自然 */
+.md-body blockquote p::before,
+.md-body blockquote p::after {
+  content: none;
+}
+
+.md-body :not(pre) > code {
+  font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
+}
