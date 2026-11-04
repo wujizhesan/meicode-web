@@ -11,20 +11,16 @@ MeiCode 的浏览器端界面。不重新实现 Agent，只做「前端」这一
 | 图标 | lucide-react |
 | Markdown | react-markdown + remark-gfm + rehype-highlight（highlight.js） |
 
-## 启动
+## 跑起来
+
+前提：Node 20+，以及一个在跑的 MeiCode A2A 服务（`meicode --a2a-port 8787`）。
 
 ```bash
-# 1. 先起 MeiCode 的 A2A 服务
-cd D:\MeiCode-Full
-meicode --a2a-port 8787
-
-# 2. 再起前端
-cd D:\meicode-web
 npm install
 npm run dev        # http://localhost:5273
 ```
 
-前端默认把 `/a2a`、`/health`、`/.well-known` 代理到 `http://127.0.0.1:8787`，改目标地址用环境变量：
+默认把 `/a2a`、`/health`、`/.well-known` 代理到 `http://127.0.0.1:8787`；服务在别处就改环境变量：
 
 ```bash
 MEICODE_A2A=http://127.0.0.1:9000 npm run dev
@@ -139,3 +135,7 @@ A2A 默认是无人值守：需要确认的动作直接拒绝，所以 Web 端�
 - **审批没有防重放**：`approvalId` 一次性有效，但没有绑定来源 IP/会话签名；要对外部署得配合 `--a2a-token`
 - **工具输出有上限**：单个工具最多带 8KB（工具层截断），超出部分前端看不到，也不能从卡片反向操作
 - 打包产物 590 kB（gzip 185 kB），主要是 markdown + 高亮；需要更小可以把 highlight.js 改成按语言懒加载
+
+## License
+
+[MIT](./LICENSE)
