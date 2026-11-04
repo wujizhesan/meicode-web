@@ -71,6 +71,17 @@ npm test      # vitest run
   JSON-RPC error 帧、`meicode/ask` 回调
 - `lib/sessions.ts`：标题截断、坏存档回退、刷新时清除 `streaming` 残留、20 条会话上限、配额写失败时的降级
 
+## 演示部署
+
+`server/demo.mjs` 把「构建产物 + 脚本化的假 A2A 后端」跑在同一个端口上，用来对外给一个能点的链接：
+
+```bash
+npm start        # 先 npm run build，再起 demo 服务（默认 5274，读 PORT 环境变量）
+```
+
+它不会读文件、不会执行命令，只按关键词返回固定内容（带「工具/文件」出工具卡片和 diff，
+带「代码」出高亮代码块），另外伪造了三条历史任务让左侧面板有内容。
+
 ## 没有模型额度时
 
 ```bash
