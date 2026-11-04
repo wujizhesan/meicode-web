@@ -68,6 +68,8 @@ export interface StreamOptions {
   toolEvents?: boolean
   /** 交互模式：权限询问以 meicode/ask 事件下发，由客户端答复后继续 */
   interactive?: boolean
+  /** 续聊：让服务端把同 contextId 的历史灌进模型上下文 */
+  contextHistory?: boolean
 }
 
 /** 工具调用事件负载，与 MeiCode 侧 src/a2a.ts 的 JSON 结构对应 */
@@ -170,6 +172,7 @@ export async function streamMessage(
       accept: 'text/event-stream',
       ...(options.toolEvents ? { 'x-meicode-tool-events': '1' } : {}),
       ...(options.interactive ? { 'x-meicode-interactive': '1' } : {}),
+      ...(options.contextHistory ? { 'x-meicode-context-history': '1' } : {}),
     },
     body: JSON.stringify(body),
     signal: options.signal,
@@ -222,4 +225,38 @@ export async function streamMessage(
   // 收尾：最后可能还剩一帧没有以空行结束
   buffer += decoder.decode()
   if (buffer.trim()) dispatch(buffer)
+}
+
+async function rpc<T>(endpoint: string, method: string, params: Record<string, unknown>): Promise<T> {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: crypto.randomUUID(), method, params }),
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const payload = await response.json() as { result?: T; error?: { message?: string } }
+  if (payload.error) throw new Error(payload.error.message ?? `RPC 失败: ${method}`)
+  if (payload.result === undefined) throw new Error(`RPC 无结果: ${method}`)
+  return payload.result
+}
+
+/** 服务端保留的任务列表（最近优先），用于「历史会话」面板 */
+export async function listTasks(endpoint: string, pageSize = 50): Promise<A2ATask[]> {
+  const result = await rpc<{ tasks: A2ATask[] }>(endpoint, 'tasks/list', { pageSize })
+  return result.tasks ?? []
+}
+
+export async function getTask(endpoint: string, id: string): Promise<A2ATask> {
+  const result = await rpc<{ task: A2ATask }>(endpoint, 'tasks/get', { id, historyLength: 200 })
+  return result.task
+}
+
+/** 任务里第一条用户消息，用作历史列表的标题 */
+export function taskTitle(task: A2ATask): string {
+  for (const message of task.history ?? []) {
+    if (message.role !== 'ROLE_USER') continue
+    const text = message.parts.map((part) => part.text).join('').replace(/\s+/g, ' ').trim()
+    if (text) return text.length > 28 ? `${text.slice(0, 28)}…` : text
+  }
+  return task.id
 }

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { Check, CircleDot, Loader2, Plug, Plus, ShieldAlert, ShieldCheck, Terminal, Trash2, X } from 'lucide-react'
+import { Check, CircleDot, History, Loader2, Plug, Plus, RefreshCw, ShieldAlert, ShieldCheck, Terminal, Trash2, X } from 'lucide-react'
 import { Composer } from './components/Composer'
 import { DiffView } from './components/DiffView'
 import { ToolOutput } from './components/ToolOutput'
 import { Markdown } from './components/Markdown'
 import { cn, formatTime } from './lib/utils'
-import { respondApproval, streamMessage, TERMINAL_STATES, ASK_ARTIFACT_NAME, TOOL_ARTIFACT_NAME, type ApprovalDecision, type ApprovalRequest, type TaskState, type ToolEvent } from './lib/a2a'
+import { getTask, listTasks, taskTitle, respondApproval, streamMessage, TERMINAL_STATES, ASK_ARTIFACT_NAME, TOOL_ARTIFACT_NAME, type A2ATask, type ApprovalDecision, type ApprovalRequest, type TaskState, type ToolEvent } from './lib/a2a'
 import { createSession, deriveTitle, loadStore, newId, saveStore, type SessionMessage as Msg, type SessionStore } from './lib/sessions'
 
 const STATE_LABEL: Record<TaskState, string> = {
@@ -20,6 +20,11 @@ export function App(): ReactElement {
   const [store, setStore] = useState<SessionStore>(loadStore)
   const [taskState, setTaskState] = useState<TaskState | null>(null)
   const [online, setOnline] = useState<boolean | null>(null)
+  const [historyTasks, setHistoryTasks] = useState<A2ATask[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyQuery, setHistoryQuery] = useState('')
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
   const [endpoint, setEndpoint] = useState(() => localStorage.getItem('meicode.a2a') ?? '/a2a')
 
   const active = useMemo(
@@ -126,7 +131,7 @@ export function App(): ReactElement {
 
     try {
       await streamMessage(
-        { endpoint, text, contextId, signal: controller.signal, toolEvents: true, interactive: true },
+        { endpoint, text, contextId, signal: controller.signal, toolEvents: true, interactive: true, contextHistory: true },
         {
           // contextId 写回发起任务的会话，而不是「当前」会话——中途切换会话才不会串
           onContext: (value) => setStore((prev) => ({
@@ -195,6 +200,52 @@ export function App(): ReactElement {
     }
   }, [active?.id, busyElsewhere, contextId, endpoint, patch, setMessages])
 
+  const refreshHistory = useCallback(async (): Promise<void> => {
+    setHistoryLoading(true)
+    setHistoryError('')
+    try {
+      setHistoryTasks(await listTasks(endpoint, 100))
+    } catch (cause) {
+      setHistoryError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [endpoint])
+
+  const openHistoryTask = useCallback(async (taskId: string): Promise<void> => {
+    setHistoryError('')
+    try {
+      const task = await getTask(endpoint, taskId)
+      // 同一 contextId 已经在本地点开过，就直接切过去，别造重复会话
+      const existing = store.sessions.find((session) => session.contextId && session.contextId === task.contextId)
+      if (existing) {
+        switchSession(existing.id)
+        return
+      }
+      const messages: Msg[] = []
+      for (const message of task.history ?? []) {
+        const text = message.parts.map((part) => part.text).join('')
+        if (!text.trim()) continue
+        messages.push({
+          id: newId(),
+          role: message.role === 'ROLE_USER' ? 'user' : 'assistant',
+          text,
+          at: Date.now(),
+        })
+      }
+      const session = {
+        id: newId(),
+        title: taskTitle(task),
+        messages,
+        contextId: task.contextId,
+        updatedAt: Date.now(),
+      }
+      setStore((prev) => ({ activeId: session.id, sessions: [session, ...prev.sessions] }))
+    } catch (cause) {
+      setHistoryError(cause instanceof Error ? cause.message : String(cause))
+    }
+  }, [endpoint, store.sessions, switchSession])
+
   const resolveApproval = useCallback(async (
     messageId: string,
     approvalId: string,
@@ -216,6 +267,12 @@ export function App(): ReactElement {
       return { activeId: session.id, sessions: [session, ...prev.sessions] }
     })
   }, [])
+
+  const filteredHistory = useMemo(() => {
+    const query = historyQuery.trim().toLowerCase()
+    if (!query) return historyTasks
+    return historyTasks.filter((task) => taskTitle(task).toLowerCase().includes(query))
+  }, [historyQuery, historyTasks])
 
   const stateBadge = useMemo(() => {
     if (!taskState) return null
@@ -302,6 +359,66 @@ export function App(): ReactElement {
                 )
               })}
           </div>
+        </div>
+
+        <div className="mt-3 border-t border-border/60 px-2 pt-3">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => {
+                const next = !historyOpen
+                setHistoryOpen(next)
+                if (next && historyTasks.length === 0) void refreshHistory()
+              }}
+              className="flex items-center gap-1.5 px-1 text-[11px] uppercase tracking-wide text-muted-foreground/70 transition hover:text-foreground"
+            >
+              <History size={11} />
+              服务端历史{historyTasks.length > 0 ? ` · ${historyTasks.length}` : ''}
+            </button>
+            {historyOpen ? (
+              <button
+                type="button"
+                onClick={() => void refreshHistory()}
+                className="flex items-center gap-1 rounded px-1 text-[11px] text-muted-foreground/70 transition hover:text-foreground"
+              >
+                <RefreshCw size={10} className={historyLoading ? 'animate-spin' : ''} />
+                {historyLoading ? '刷新中' : '刷新'}
+              </button>
+            ) : null}
+          </div>
+
+          {historyOpen ? (
+            <div className="mt-2">
+              <input
+                value={historyQuery}
+                onChange={(event) => setHistoryQuery(event.target.value)}
+                placeholder="按内容过滤"
+                spellCheck={false}
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none focus:border-primary/50"
+              />
+              {historyError ? (
+                <div className="mt-1 px-1 text-[11px] text-destructive">{historyError}</div>
+              ) : null}
+              <div className="mt-1 max-h-56 space-y-0.5 overflow-y-auto">
+                {filteredHistory.map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => void openHistoryTask(task.id)}
+                    title={taskTitle(task)}
+                    className="block w-full truncate rounded px-2 py-1 text-left text-[12px] text-muted-foreground transition hover:bg-white/5 hover:text-foreground"
+                  >
+                    {taskTitle(task)}
+                  </button>
+                ))}
+                {!historyLoading && filteredHistory.length === 0 ? (
+                  <div className="px-2 py-1 text-[11px] text-muted-foreground/60">
+                    {historyTasks.length === 0 ? '服务端暂无历史任务' : '没有匹配的历史'}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="border-t border-border p-3">
