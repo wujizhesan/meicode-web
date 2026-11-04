@@ -28,6 +28,18 @@ MEICODE_A2A=http://127.0.0.1:9000 npm run dev
 
 浏览器直连会被 CORS 拦住（MeiCode 的 A2A 服务不带 CORS 头），所以开发期一律走 Vite 代理。
 
+## 打包
+
+`npm run build` 会把 markdown 渲染器拆成独立块：
+
+| 文件 | 大小 | 何时加载 |
+|---|---|---|
+| `index.js` | 282 kB（gzip 88 kB） | 首屏 |
+| `MarkdownRenderer.js` | 330 kB（gzip 102 kB） | 第一次渲染助手消息时 |
+| `MarkdownRenderer.css` | 1.1 kB | 同上（highlight.js 主题） |
+
+加载期间 Suspense 先按纯文本显示，不会白屏。
+
 ## 测试
 
 ```bash
@@ -158,7 +170,8 @@ A2A 默认是无人值守：需要确认的动作直接拒绝，所以 Web 端�
 - **没有鉴权**：`meicode --a2a-port` 不带 token 时只放行本机回环地址；要对外需要 `--a2a-token`，本前端还没做 Bearer 输入框
 - **审批没有防重放**：`approvalId` 一次性有效，但没有绑定来源 IP/会话签名；要对外部署得配合 `--a2a-token`
 - **工具输出有上限**：单个工具最多带 8KB（工具层截断），超出部分前端看不到，也不能从卡片反向操作
-- 打包产物 590 kB（gzip 185 kB），主要是 markdown + 高亮；需要更小可以把 highlight.js 改成按语言懒加载
+- 首屏 JS 282 kB（gzip 88 kB），markdown 渲染器与 highlight.js 单独成块（330 kB，gzip 102 kB），
+  第一次出现助手消息时才加载；高亮主题 CSS 跟着那个块走，首屏不为它付代价
 
 ## License
 
