@@ -40,12 +40,24 @@ npm run mock       # 起一个假的 A2A 服务（8787），按 12 字符切片�
 
 ```
 src/
-  App.tsx              布局、会话状态、流式事件归并
+  App.tsx              仅做组装（~100 行），状态与渲染都在下面这些模块里
+  hooks/
+    useSessions.ts     会话存储：持久化、增删切换、按消息 id 打补丁
+    useA2aStream.ts    发送/停止/审批回传、artifact 归并、任务状态
+    useTaskHistory.ts  服务端历史：列表、防抖搜索、点开还原会话
   components/
-    Markdown.tsx       markdown + 代码块（带语言标签与复制按钮）
-    Composer.tsx       多行输入，Enter 发送 / Shift+Enter 换行
+    Sidebar.tsx        品牌、会话列表、历史面板、端点配置
+    ChatHeader.tsx     状态条与任务状态徽章
+    MessageList.tsx    消息流与贴底滚动
+    MessageRow.tsx     单条消息（用户/错误/助手）
+    ToolList.tsx       工具卡片（参数、成败、耗时、diff、输出）
+    ApprovalCard.tsx   权限询问
+    Markdown.tsx       markdown + 代码块
+    DiffView.tsx       unified diff 红绿对比
+    ToolOutput.tsx     工具正文输出
+    Composer.tsx       多行输入
   lib/
-    a2a.ts             协议类型 + SSE 帧解析 + streamMessage
+    a2a.ts             协议类型 + SSE 帧解析 + 各 RPC 封装
     sessions.ts        会话模型、localStorage 持久化与容量上限
 mock/a2a-mock.mjs      假的 A2A 服务端
 ```
