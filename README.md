@@ -40,6 +40,17 @@ MEICODE_A2A=http://127.0.0.1:9000 npm run dev
 
 加载期间 Suspense 先按纯文本显示，不会白屏。
 
+## 出错时的降级
+
+React 默认「一棵子树抛错，整页卸载」。这里放了两层 `ErrorBoundary`：
+
+- **消息级**：每条助手消息单独包一层，某条渲染炸了只降级这一条（显示错误信息 + 重试），
+  同一次对话里其他内容照常
+- **整页级**：`main.tsx` 里包住 `App`，真到大面积崩溃时给一个「重试 / 刷新页面」的界面，
+  而不是白屏
+
+`componentDidCatch` 里带了 `label`（如 `message m-123`），控制台能直接定位是哪一块挂的。
+
 ## 测试
 
 ```bash
@@ -76,6 +87,7 @@ src/
     MessageRow.tsx     单条消息（用户/错误/助手）
     ToolList.tsx       工具卡片（参数、成败、耗时、diff、输出）
     ApprovalCard.tsx   权限询问
+    ErrorBoundary.tsx  渲染错误隔离（单条消息降级 / 整页兜底）
     Markdown.tsx       markdown + 代码块
     DiffView.tsx       unified diff 红绿对比
     ToolOutput.tsx     工具正文输出

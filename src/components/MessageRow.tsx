@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { ApprovalCard } from './ApprovalCard'
+import { ErrorBoundary } from './ErrorBoundary'
 import { Markdown } from './Markdown'
 import { ToolList } from './ToolList'
 import { formatTime } from '../lib/utils'
@@ -43,22 +44,25 @@ export function MessageRow({
         <span>{formatTime(msg.at)}</span>
         {msg.stopped ? <span className="text-amber-400/80">已停止</span> : null}
       </div>
-      {msg.ask ? (
-        <ApprovalCard
-          request={msg.ask}
-          resolved={msg.askResolved}
-          onResolve={(decision) => onApproval(msg.ask!.approvalId, decision)}
-        />
-      ) : null}
-      {msg.tools?.length ? <ToolList tools={msg.tools} /> : null}
-      {msg.text ? (
-        <Markdown text={msg.text} streaming={Boolean(msg.streaming)} />
-      ) : (
-        <div className="h-6 w-24 animate-pulse rounded bg-white/5" />
-      )}
-      {msg.streaming && msg.text ? (
-        <span className="ml-0.5 inline-block h-4 w-[2px] animate-blink bg-primary align-middle" />
-      ) : null}
+      {/* 单条消息崩了只降级这一条，别把整段对话带走 */}
+      <ErrorBoundary label={`message ${msg.id}`}>
+        {msg.ask ? (
+          <ApprovalCard
+            request={msg.ask}
+            resolved={msg.askResolved}
+            onResolve={(decision) => onApproval(msg.ask!.approvalId, decision)}
+          />
+        ) : null}
+        {msg.tools?.length ? <ToolList tools={msg.tools} /> : null}
+        {msg.text ? (
+          <Markdown text={msg.text} streaming={Boolean(msg.streaming)} />
+        ) : (
+          <div className="h-6 w-24 animate-pulse rounded bg-white/5" />
+        )}
+        {msg.streaming && msg.text ? (
+          <span className="ml-0.5 inline-block h-4 w-[2px] animate-blink bg-primary align-middle" />
+        ) : null}
+      </ErrorBoundary>
     </div>
   )
 }
