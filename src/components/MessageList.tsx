@@ -1,10 +1,17 @@
 import { useEffect, useRef, type ReactElement } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Loader2, Terminal } from 'lucide-react'
 import { MessageRow } from './MessageRow'
 import type { ApprovalDecision } from '../lib/a2a'
 import type { SessionMessage as Msg } from '../lib/sessions'
 
-/** 消息流：空态、消息列表、执行中提示，并负责「贴着底部滚动」 */
+/**
+ * 消息流。
+ *
+ * 长会话只渲染视口附近的行：一条 markdown 消息可能几百像素高，120 条铺满 DOM 后
+ * 滚动会明显掉帧。行高不固定，所以用动态测量（measureElement）而不是固定 estimate。
+ * 空态和执行中提示不参与虚拟化。
+ */
 export function MessageList({
   messages,
   streaming,
@@ -17,10 +24,21 @@ export function MessageList({
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
 
+  // 末尾那一行是「正在工作…」，跟消息一起参与虚拟化，否则它会盖在最后一条上
+  const rowCount = messages.length + (streaming ? 1 : 0)
+
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 140,
+    overscan: 4,
+  })
+
+  // 贴着底部时，内容变化（流式追加、新消息）继续跟随
   useEffect(() => {
-    const el = scrollRef.current
-    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight
-  }, [messages])
+    if (!stickToBottom.current || rowCount === 0) return
+    virtualizer.scrollToIndex(rowCount - 1, { align: 'end' })
+  }, [messages, rowCount, virtualizer])
 
   return (
     <div
@@ -31,7 +49,7 @@ export function MessageList({
       }}
       className="flex-1 overflow-y-auto px-4 py-6 sm:px-6"
     >
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className="mx-auto max-w-3xl">
         {messages.length === 0 ? (
           <div className="mt-16 text-center">
             <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-card">
@@ -44,22 +62,40 @@ export function MessageList({
               ，然后在下方输入任务。左侧可改端点地址。
             </p>
           </div>
-        ) : null}
-
-        {messages.map((msg) => (
-          <MessageRow
-            key={msg.id}
-            msg={msg}
-            onApproval={(approvalId, decision) => onApproval(msg.id, approvalId, decision)}
-          />
-        ))}
-
-        {streaming ? (
-          <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-            <Loader2 size={13} className="animate-spin" />
-            MeiCode 正在工作…
+        ) : (
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+            {virtualizer.getVirtualItems().map((item) => {
+              const message = messages[item.index]
+              return (
+                <div
+                  key={message ? message.id : 'streaming-footer'}
+                  data-index={item.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${item.start}px)`,
+                  }}
+                  className="pb-6"
+                >
+                  {message ? (
+                    <MessageRow
+                      msg={message}
+                      onApproval={(approvalId, decision) => onApproval(message.id, approvalId, decision)}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                      <Loader2 size={13} className="animate-spin" />
+                      MeiCode 正在工作…
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   )
