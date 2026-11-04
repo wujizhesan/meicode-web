@@ -240,9 +240,15 @@ async function rpc<T>(endpoint: string, method: string, params: Record<string, u
   return payload.result
 }
 
-/** 服务端保留的任务列表（最近优先），用于「历史会话」面板 */
-export async function listTasks(endpoint: string, pageSize = 50): Promise<A2ATask[]> {
-  const result = await rpc<{ tasks: A2ATask[] }>(endpoint, 'tasks/list', { pageSize })
+/**
+ * 服务端保留的任务列表（最近优先）。
+ * query 交给服务端按任务正文匹配（大小写不敏感），前端不再二次过滤。
+ */
+export async function listTasks(endpoint: string, pageSize = 50, query?: string): Promise<A2ATask[]> {
+  const result = await rpc<{ tasks: A2ATask[] }>(endpoint, 'tasks/list', {
+    pageSize,
+    ...(query && query.trim() ? { query: query.trim() } : {}),
+  })
   return result.tasks ?? []
 }
 

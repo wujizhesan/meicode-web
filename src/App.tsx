@@ -54,6 +54,7 @@ export function App(): ReactElement {
     saveStore(store)
   }, [store])
 
+
   useEffect(() => {
     let cancelled = false
     fetch('/health')
@@ -200,17 +201,24 @@ export function App(): ReactElement {
     }
   }, [active?.id, busyElsewhere, contextId, endpoint, patch, setMessages])
 
-  const refreshHistory = useCallback(async (): Promise<void> => {
+  const refreshHistory = useCallback(async (query?: string): Promise<void> => {
     setHistoryLoading(true)
     setHistoryError('')
     try {
-      setHistoryTasks(await listTasks(endpoint, 100))
+      setHistoryTasks(await listTasks(endpoint, 100, query))
     } catch (cause) {
       setHistoryError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setHistoryLoading(false)
     }
   }, [endpoint])
+
+  // 搜索交给服务端做，输入停 250ms 再发，避免每敲一个字都打一次 RPC
+  useEffect(() => {
+    if (!historyOpen) return
+    const timer = setTimeout(() => { void refreshHistory(historyQuery) }, 250)
+    return () => clearTimeout(timer)
+  }, [historyOpen, historyQuery, refreshHistory])
 
   const openHistoryTask = useCallback(async (taskId: string): Promise<void> => {
     setHistoryError('')
@@ -268,11 +276,7 @@ export function App(): ReactElement {
     })
   }, [])
 
-  const filteredHistory = useMemo(() => {
-    const query = historyQuery.trim().toLowerCase()
-    if (!query) return historyTasks
-    return historyTasks.filter((task) => taskTitle(task).toLowerCase().includes(query))
-  }, [historyQuery, historyTasks])
+  const filteredHistory = historyTasks
 
   const stateBadge = useMemo(() => {
     if (!taskState) return null
