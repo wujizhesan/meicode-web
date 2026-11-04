@@ -18,3 +18,5 @@ jobs:
       - run: npm ci
       # 类型检查 + 构建：tsc -b --noEmit 会先跑，构建产物不提交（见 .gitignore）
       - run: npm run build
+      # 协议层与持久化的单元测试（SSE 分帧、opt-in 请求头、会话存档）
+      - run: npm test

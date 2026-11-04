@@ -28,6 +28,18 @@ MEICODE_A2A=http://127.0.0.1:9000 npm run dev
 
 浏览器直连会被 CORS 拦住（MeiCode 的 A2A 服务不带 CORS 头），所以开发期一律走 Vite 代理。
 
+## 测试
+
+```bash
+npm test      # vitest run
+```
+
+覆盖两处最容易静默出错的地方：
+
+- `lib/a2a.ts`：SSE 分帧（粘包、半包、末帧无空行）、`data:` 多行拼接、心跳帧、三个 opt-in 请求头、
+  JSON-RPC error 帧、`meicode/ask` 回调
+- `lib/sessions.ts`：标题截断、坏存档回退、刷新时清除 `streaming` 残留、20 条会话上限、配额写失败时的降级
+
 ## 没有模型额度时
 
 ```bash
