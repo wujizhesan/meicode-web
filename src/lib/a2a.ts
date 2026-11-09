@@ -242,14 +242,26 @@ async function rpc<T>(endpoint: string, method: string, params: Record<string, u
 
 /**
  * 服务端保留的任务列表（最近优先）。
- * query 交给服务端按任务正文匹配（大小写不敏感），前端不再二次过滤。
+ * query 优先交给服务端按任务正文匹配；旧服务端不认这个参数时会返回未过滤的列表，
+ * 所以本地再兜底滤一次。这层过滤比服务端宽松（拼全部 parts、全部 history），
+ * 对已经过滤过的结果是幂等的，不会误删命中项；代价是旧服务端只能搜已加载的这一页。
  */
+export function filterTasksByQuery(tasks: A2ATask[], query?: string): A2ATask[] {
+  const needle = query?.trim().toLowerCase()
+  if (!needle) return tasks
+  return tasks.filter((task) =>
+    (task.history ?? []).some((message) =>
+      message.parts.map((part) => part.text).join('').toLowerCase().includes(needle),
+    ),
+  )
+}
+
 export async function listTasks(endpoint: string, pageSize = 50, query?: string): Promise<A2ATask[]> {
   const result = await rpc<{ tasks: A2ATask[] }>(endpoint, 'tasks/list', {
     pageSize,
     ...(query && query.trim() ? { query: query.trim() } : {}),
   })
-  return result.tasks ?? []
+  return filterTasksByQuery(result.tasks ?? [], query)
 }
 
 export async function getTask(endpoint: string, id: string): Promise<A2ATask> {

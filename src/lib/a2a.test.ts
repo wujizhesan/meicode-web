@@ -3,7 +3,10 @@ import {
   framePayload,
   parseSseFrames,
   streamMessage,
+  filterTasksByQuery,
+  listTasks,
   ASK_ARTIFACT_NAME,
+  type A2ATask,
   type A2AStreamResponse,
 } from './a2a'
 
@@ -152,5 +155,82 @@ describe('streamMessage', () => {
     let count = 0
     await streamMessage({ endpoint: '/a2a', text: 'hi' }, { onEvent: () => { count++ } })
     expect(count).toBe(1)
+  })
+})
+
+function fakeTask(id: string, texts: string[]): A2ATask {
+  return {
+    id,
+    contextId: `ctx-${id}`,
+    status: { state: 'TASK_STATE_COMPLETED', timestamp: 'now' },
+    history: texts.map((text, index) => ({
+      messageId: `m-${id}-${index}`,
+      role: index === 0 ? 'ROLE_USER' : 'ROLE_AGENT',
+      parts: [{ kind: 'text', text }],
+    })),
+    artifacts: [],
+  }
+}
+
+describe('filterTasksByQuery', () => {
+  const tasks = [
+    fakeTask('t1', ['重构前端', '已完成拆分']),
+    fakeTask('t2', ['查询 Database 索引', '没有命中']),
+  ]
+
+  it('空关键词或纯空格时原样返回', () => {
+    expect(filterTasksByQuery(tasks)).toBe(tasks)
+    expect(filterTasksByQuery(tasks, '   ')).toBe(tasks)
+  })
+
+  it('大小写不敏感，用户与助手消息都算正文', () => {
+    expect(filterTasksByQuery(tasks, '重构').map((task) => task.id)).toEqual(['t1'])
+    expect(filterTasksByQuery(tasks, '已完成').map((task) => task.id)).toEqual(['t1'])
+    expect(filterTasksByQuery(tasks, 'DATABASE').map((task) => task.id)).toEqual(['t2'])
+  })
+
+  it('没有命中时返回空数组，history 缺失也不抛', () => {
+    expect(filterTasksByQuery(tasks, '不存在')).toEqual([])
+    expect(filterTasksByQuery([{ ...tasks[0], history: undefined as never }], '重构')).toEqual([])
+  })
+
+  it('对服务端已过滤的结果是幂等的', () => {
+    const alreadyFiltered = [tasks[0]]
+    expect(filterTasksByQuery(alreadyFiltered, '重构')).toEqual(alreadyFiltered)
+  })
+})
+
+describe('listTasks 兼容旧服务端', () => {
+  function stubRpc(result: unknown) {
+    const mock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: '1', result }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ))
+    vi.stubGlobal('fetch', mock)
+    return mock
+  }
+
+  it('把 query 发给服务端，并在服务端忽略它时本地兜底过滤', async () => {
+    const unfiltered = [fakeTask('t1', ['重构前端']), fakeTask('t2', ['查询数据库'])]
+    const mock = stubRpc({ tasks: unfiltered, totalSize: 2 })
+
+    const result = await listTasks('/a2a', 100, '重构')
+
+    const init = mock.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(String(init.body)) as { method: string; params: { query: string } }
+    expect(body.method).toBe('tasks/list')
+    expect(body.params.query).toBe('重构')
+    expect(result.map((task) => task.id)).toEqual(['t1'])
+  })
+
+  it('不带关键词时不额外过滤，也不发 query 参数', async () => {
+    const all = [fakeTask('t1', ['重构前端']), fakeTask('t2', ['查询数据库'])]
+    const mock = stubRpc({ tasks: all, totalSize: 2 })
+
+    expect(await listTasks('/a2a', 100)).toEqual(all)
+
+    const init = mock.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(String(init.body)) as { params: Record<string, unknown> }
+    expect(body.params).not.toHaveProperty('query')
   })
 })

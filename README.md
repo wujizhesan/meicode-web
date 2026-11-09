@@ -13,7 +13,7 @@ MeiCode 的浏览器端界面。不重新实现 Agent，只做「前端」这一
 
 ## 跑起来
 
-前提：Node 20+，以及一个在跑的 MeiCode A2A 服务（`meicode --a2a-port 8787`）。
+前提：Node 22.12+（Vite 8 要求 ≥20.19 或 ≥22.12，CI 固定 22），以及一个在跑的 MeiCode A2A 服务（`meicode --a2a-port 8787`）。
 
 ```bash
 npm install
@@ -28,15 +28,35 @@ MEICODE_A2A=http://127.0.0.1:9000 npm run dev
 
 浏览器直连会被 CORS 拦住（MeiCode 的 A2A 服务不带 CORS 头），所以开发期一律走 Vite 代理。
 
+## 服务端版本要求
+
+> **本前端依赖的四项 A2A 扩展尚未进入公开发行版。** 照 `npm i -g @wujizhesan/meicode`
+> 装到的 `0.1.6` 能连上、能收文本，但下面这些功能不会工作。
+
+| 能力 | 请求头 / 参数 | 旧版服务端上的表现 |
+|---|---|---|
+| 工具卡片 | `x-meicode-tool-events: 1` | 看不到工具调用、diff、输出 |
+| 交互审批 | `x-meicode-interactive: 1` | 写操作被直接拒绝，审批卡片不出现 |
+| 多轮记忆 | `x-meicode-context-history: 1` | 每轮都是新任务，模型不记得上一句 |
+| 服务端历史搜索 | `tasks/list` 的 `query` | 前端本地兜底过滤，但只搜得到已加载的这一页 |
+
+这些能力自服务端源码 `7dadd87` 起提供，目前记在服务端 `CHANGELOG.md` 的 *Unreleased*；
+公开仓库 `wujizhesan/meicode` 与 npm `0.1.6` 都还不含它们。要完整体验，请用该提交之后的源码构建。
+
+旧版服务端**不会让前端报错或白屏**：未知请求头会被直接忽略，搜索由 `filterTasksByQuery`
+本地兜底。代价是功能静默缺席，所以连接前请先确认服务端版本。
+
 ## 打包
 
 `npm run build` 会把 markdown 渲染器拆成独立块：
 
 | 文件 | 大小 | 何时加载 |
 |---|---|---|
-| `index.js` | 282 kB（gzip 88 kB） | 首屏 |
-| `MarkdownRenderer.js` | 330 kB（gzip 102 kB） | 第一次渲染助手消息时 |
+| `index.js` | 318.8 kB（gzip 99.9 kB） | 首屏 |
+| `MarkdownRenderer.js` | 330.3 kB（gzip 102.3 kB） | 第一次渲染助手消息时 |
 | `MarkdownRenderer.css` | 1.1 kB | 同上（highlight.js 主题） |
+
+以上为 `npm run build` 实测值，会随依赖变化，改动构建相关配置后请重新核对。
 
 加载期间 Suspense 先按纯文本显示，不会白屏。
 
@@ -65,22 +85,31 @@ React 默认「一棵子树抛错，整页卸载」。这里放了两层 `ErrorB
 npm test      # vitest run
 ```
 
-覆盖两处最容易静默出错的地方：
+覆盖三处最容易静默出错的地方：
 
 - `lib/a2a.ts`：SSE 分帧（粘包、半包、末帧无空行）、`data:` 多行拼接、心跳帧、三个 opt-in 请求头、
-  JSON-RPC error 帧、`meicode/ask` 回调
+  JSON-RPC error 帧、`meicode/ask` 回调，以及旧服务端忽略 `query` 时 `listTasks` 的本地兜底过滤
 - `lib/sessions.ts`：标题截断、坏存档回退、刷新时清除 `streaming` 残留、20 条会话上限、配额写失败时的降级
+- `components/ErrorBoundary.tsx`：单条消息降级渲染与重试
 
 ## 演示部署
 
-`server/demo.mjs` 把「构建产物 + 脚本化的假 A2A 后端」跑在同一个端口上，用来对外给一个能点的链接：
+线上演示：<https://meicode-console.app.workbuddy.host/?sharecode=3POGGBCUE5>
+
+> **这是脚本化的假演示，不是真 Agent。** 后端不读文件、不执行命令、不调用模型，
+> 所有回复、工具卡片、diff 和历史任务都是预置内容，只用来展示界面与交互。
+
+`server/demo.mjs` 把「构建产物 + 脚本化的假 A2A 后端」跑在同一个端口上：
 
 ```bash
 npm start        # 先 npm run build，再起 demo 服务（默认 5274，读 PORT 环境变量）
 ```
 
-它不会读文件、不会执行命令，只按关键词返回固定内容（带「工具/文件」出工具卡片和 diff，
-带「代码」出高亮代码块），另外伪造了三条历史任务让左侧面板有内容。
+它按关键词返回固定内容（带「工具/文件」出工具卡片和 diff，带「代码」出高亮代码块），
+另外伪造了三条历史任务让左侧面板有内容。
+
+线上的 `?sharecode=...` 是发布平台的访问门禁，**不能省略**：不带它时连静态 JS 都会返回 403。
+本地 `npm start` 起的 demo 没有这层限制，直接访问 `http://localhost:5274/` 即可。
 
 ## 没有模型额度时
 
@@ -168,6 +197,8 @@ end 帧还带 `output`（工具正文，工具层已截到 8KB，服务端再兜
 点某一条会 `tasks/get` 取出它的 `history` 并还原成一个本地会话；同一 `contextId`
 已经打开过就直接切过去，不重复建会话。搜索框走服务端：把关键词作为 `query` 传给 `tasks/list`，按任务正文匹配（大小写不敏感），
 输入停 250ms 才发请求。这样命中的是全部历史任务，不只是已加载的那一页。
+旧服务端不认 `query` 时会返回未过滤的列表，`listTasks` 会再按任务正文本地滤一次兜底
+（对已过滤结果是幂等的，不会误删）；此时只能搜到已加载的这一页。
 
 **续接是真的续接**：发送时会带 `x-meicode-context-history: 1`，服务端据此把同
 `contextId` 下已有的消息灌进模型上下文。在此之前每个 `message/send` 都是新任务、
@@ -198,10 +229,12 @@ A2A 默认是无人值守：需要确认的动作直接拒绝，所以 Web 端�
 
 ## 已知限制
 
+- **发行版落后于前端**：四项 A2A 扩展尚未发版，公开仓库与 npm `0.1.6` 上工具卡片、审批、
+  多轮记忆会静默缺席，详见「服务端版本要求」。这不是连接故障，别按 CORS / 端点配置去排查
 - **没有鉴权**：`meicode --a2a-port` 不带 token 时只放行本机回环地址；要对外需要 `--a2a-token`，本前端还没做 Bearer 输入框
 - **审批没有防重放**：`approvalId` 一次性有效，但没有绑定来源 IP/会话签名；要对外部署得配合 `--a2a-token`
 - **工具输出有上限**：单个工具最多带 8KB（工具层截断），超出部分前端看不到，也不能从卡片反向操作
-- 首屏 JS 282 kB（gzip 88 kB），markdown 渲染器与 highlight.js 单独成块（330 kB，gzip 102 kB），
+- 首屏 JS 318.8 kB（gzip 99.9 kB），markdown 渲染器与 highlight.js 单独成块（330.3 kB，gzip 102.3 kB），
   第一次出现助手消息时才加载；高亮主题 CSS 跟着那个块走，首屏不为它付代价
 
 ## License
